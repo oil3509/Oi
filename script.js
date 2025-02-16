@@ -1,40 +1,111 @@
-// Configuração do Firebase
-const firebaseConfig = {
-    apiKey: "SUA_API_KEY",
-    authDomain: "SEU_AUTH_DOMAIN",
-    databaseURL: "SUA_DATABASE_URL",
-    projectId: "SEU_PROJECT_ID",
-    storageBucket: "SEU_STORAGE_BUCKET",
-    messagingSenderId: "SEU_MESSAGING_SENDER_ID",
-    appId: "SEU_APP_ID"
-};
+// app.js
 
-firebase.initializeApp(firebaseConfig);
+const loginForm = document.getElementById('login-form');
+const chatApp = document.getElementById('chat-app');
+const contactList = document.getElementById('contact-list');
+const messagesDiv = document.getElementById('messages');
+const messageInput = document.getElementById('message-input');
+const sendMessageBtn = document.getElementById('send-message-btn');
+const logoutBtn = document.getElementById('logout-btn');
+const emailInput = document.getElementById('email');
+const passwordInput = document.getElementById('password');
 
-const db = firebase.database();
-const messagesRef = db.ref("messages");
+let currentUser = null;
+let currentChat = null;
 
-// Enviar Mensagem
-function sendMessage() {
-    const messageInput = document.getElementById("messageInput");
-    const message = messageInput.value;
-
-    if (message.trim() !== "") {
-        messagesRef.push().set({
-            text: message,
-            timestamp: Date.now()
+// Login user
+document.getElementById('login-btn').addEventListener('click', () => {
+    const email = emailInput.value;
+    const password = passwordInput.value;
+    
+    firebase.auth().signInWithEmailAndPassword(email, password)
+        .then((userCredential) => {
+            currentUser = userCredential.user;
+            showChatApp();
+            loadContacts();
+        })
+        .catch((error) => {
+            alert('Error: ' + error.message);
         });
-        messageInput.value = "";
-    }
+});
+
+// Sign up user
+document.getElementById('signup-btn').addEventListener('click', () => {
+    const email = emailInput.value;
+    const password = passwordInput.value;
+    
+    firebase.auth().createUserWithEmailAndPassword(email, password)
+        .then((userCredential) => {
+            currentUser = userCredential.user;
+            showChatApp();
+            loadContacts();
+        })
+        .catch((error) => {
+            alert('Error: ' + error.message);
+        });
+});
+
+// Logout user
+logoutBtn.addEventListener('click', () => {
+    firebase.auth().signOut().then(() => {
+        currentUser = null;
+        chatApp.style.display = 'none';
+        loginForm.style.display = 'block';
+    });
+});
+
+// Show chat interface
+function showChatApp() {
+    loginForm.style.display = 'none';
+    chatApp.style.display = 'block';
 }
 
-// Receber Mensagens em Tempo Real
-messagesRef.on("child_added", function(snapshot) {
-    const messagesDiv = document.getElementById("messages");
-    const data = snapshot.val();
+// Load contacts from Firestore
+function loadContacts() {
+    db.collection('users').get().then(snapshot => {
+        contactList.innerHTML = '';
+        snapshot.forEach(doc => {
+            if (doc.id !== currentUser.email) {
+                const li = document.createElement('li');
+                li.textContent = doc.id;
+                li.addEventListener('click', () => openChat(doc.id));
+                contactList.appendChild(li);
+            }
+        });
+    });
+}
 
-    const messageElement = document.createElement("p");
-    messageElement.textContent = data.text;
-    messagesDiv.appendChild(messageElement);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+// Open chat with selected contact
+function openChat(contactEmail) {
+    currentChat = contactEmail;
+    messagesDiv.innerHTML = '';
+    loadMessages();
+}
+
+// Load messages from Firestore
+function loadMessages() {
+    db.collection('chats').doc(currentChat).collection('messages').orderBy('timestamp')
+        .onSnapshot(snapshot => {
+            messagesDiv.innerHTML = '';
+            snapshot.forEach(doc => {
+                const message = doc.data();
+                const messageDiv = document.createElement('div');
+                messageDiv.textContent = `${message.sender}: ${message.text}`;
+                messagesDiv.appendChild(messageDiv);
+            });
+        });
+}
+
+// Send message to Firestore
+sendMessageBtn.addEventListener('click', () => {
+    const messageText = messageInput.value;
+    if (messageText && currentChat) {
+        const message = {
+            sender: currentUser.email,
+            text: messageText,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        db.collection('chats').doc(currentChat).collection('messages').add(message);
+        messageInput.value = '';
+    }
 });
