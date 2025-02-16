@@ -1,37 +1,111 @@
-body {
-    font-family: Arial, sans-serif;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    background-color: #25D366;
+// app.js
+
+const loginForm = document.getElementById('login-form');
+const chatApp = document.getElementById('chat-app');
+const contactList = document.getElementById('contact-list');
+const messagesDiv = document.getElementById('messages');
+const messageInput = document.getElementById('message-input');
+const sendMessageBtn = document.getElementById('send-message-btn');
+const logoutBtn = document.getElementById('logout-btn');
+const emailInput = document.getElementById('email');
+const passwordInput = document.getElementById('password');
+
+let currentUser = null;
+let currentChat = null;
+
+// Login user
+document.getElementById('login-btn').addEventListener('click', () => {
+    const email = emailInput.value;
+    const password = passwordInput.value;
+    
+    firebase.auth().signInWithEmailAndPassword(email, password)
+        .then((userCredential) => {
+            currentUser = userCredential.user;
+            showChatApp();
+            loadContacts();
+        })
+        .catch((error) => {
+            alert('Error: ' + error.message);
+        });
+});
+
+// Sign up user
+document.getElementById('signup-btn').addEventListener('click', () => {
+    const email = emailInput.value;
+    const password = passwordInput.value;
+    
+    firebase.auth().createUserWithEmailAndPassword(email, password)
+        .then((userCredential) => {
+            currentUser = userCredential.user;
+            showChatApp();
+            loadContacts();
+        })
+        .catch((error) => {
+            alert('Error: ' + error.message);
+        });
+});
+
+// Logout user
+logoutBtn.addEventListener('click', () => {
+    firebase.auth().signOut().then(() => {
+        currentUser = null;
+        chatApp.style.display = 'none';
+        loginForm.style.display = 'block';
+    });
+});
+
+// Show chat interface
+function showChatApp() {
+    loginForm.style.display = 'none';
+    chatApp.style.display = 'block';
 }
 
-#chat-container {
-    width: 300px;
-    background: white;
-    padding: 20px;
-    border-radius: 10px;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+// Load contacts from Firestore
+function loadContacts() {
+    db.collection('users').get().then(snapshot => {
+        contactList.innerHTML = '';
+        snapshot.forEach(doc => {
+            if (doc.id !== currentUser.email) {
+                const li = document.createElement('li');
+                li.textContent = doc.id;
+                li.addEventListener('click', () => openChat(doc.id));
+                contactList.appendChild(li);
+            }
+        });
+    });
 }
 
-#messages {
-    height: 200px;
-    overflow-y: auto;
-    border: 1px solid #ccc;
-    margin-bottom: 10px;
-    padding: 5px;
+// Open chat with selected contact
+function openChat(contactEmail) {
+    currentChat = contactEmail;
+    messagesDiv.innerHTML = '';
+    loadMessages();
 }
 
-input {
-    width: 80%;
-    padding: 5px;
+// Load messages from Firestore
+function loadMessages() {
+    db.collection('chats').doc(currentChat).collection('messages').orderBy('timestamp')
+        .onSnapshot(snapshot => {
+            messagesDiv.innerHTML = '';
+            snapshot.forEach(doc => {
+                const message = doc.data();
+                const messageDiv = document.createElement('div');
+                messageDiv.textContent = `${message.sender}: ${message.text}`;
+                messagesDiv.appendChild(messageDiv);
+            });
+        });
 }
 
-button {
-    padding: 5px 10px;
-    background: #128C7E;
-    color: white;
-    border: none;
-    cursor: pointer;
-}
+// Send message to Firestore
+sendMessageBtn.addEventListener('click', () => {
+    const messageText = messageInput.value;
+    if (messageText && currentChat) {
+        const message = {
+            sender: currentUser.email,
+            text: messageText,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        db.collection('chats').doc(currentChat).collection('messages').add(message);
+        messageInput.value = '';
+    }
+});
